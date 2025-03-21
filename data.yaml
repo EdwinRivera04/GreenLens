@@ -1,15 +1,8 @@
-path: data  # dataset root dir
-train: images/train  # train images (relative to 'path')
-val: images/val  # val images (relative to 'path')
 
-# Classes
-names:
-  0: cardboard
-  1: glass
-  2: metal
-  3: paper
-  4: plastic
-  5: trash
+train: /Users/edwinrivera/Workspace/PersonalProjects/TrashSorting/data/images/train
+val: /Users/edwinrivera/Workspace/PersonalProjects/TrashSorting/data/images/val
+test: /Users/edwinrivera/Workspace/PersonalProjects/TrashSorting/data/images/test
 
-# Number of classes
-nc: 6 
+nc: 12
+names: ['battery', 'biological', 'brown-glass', 'cardboard', 'clothes', 'green-glass', 'metal', 'paper', 'plastic', 'shoes', 'trash', 'white-glass']
+    

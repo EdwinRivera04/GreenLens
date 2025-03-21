@@ -5,10 +5,18 @@ from pathlib import Path
 import torch
 import shutil
 import sys
+import random
 
 def download_dataset():
     """Download the TrashNet dataset from Kaggle."""
-    print("Downloading TrashNet dataset from Kaggle...")
+    print("Checking for existing dataset...")
+    
+    # Check if data directory exists and is populated
+    if os.path.exists('data/trashnet') and any(os.listdir('data/trashnet')):
+        print("Dataset already exists in data/trashnet")
+        return True
+        
+    print("Dataset not found. Starting download process...")
     try:
         # Check if Kaggle credentials exist
         kaggle_dir = os.path.expanduser('~/.kaggle')
@@ -21,37 +29,35 @@ def download_dataset():
             print("4. Run: chmod 600 ~/.kaggle/kaggle.json")
             return False
 
-        # Download the dataset
-        print("Attempting to download dataset...")
-        path = kagglehub.dataset_download("feyzazkefe/trashnet")
-        print(f"Dataset downloaded to: {path}")
-        
-        if not path:
-            print("Error: No path returned from kagglehub.dataset_download")
-            return False
-            
         # Create necessary directories
         os.makedirs('data/images', exist_ok=True)
         os.makedirs('data/labels', exist_ok=True)
+        os.makedirs('data/trashnet', exist_ok=True)
+
+        # Download the dataset using kaggle-api instead of kagglehub
+        print("Attempting to download dataset...")
+        cmd = "kaggle datasets download -d mostafaabla/garbage-classification -p data/trashnet --unzip"
+        os.system(cmd)
         
-        # Move the dataset to the correct location
-        dataset_path = path[0]  # kagglehub returns a list of paths
-        print(f"Processing dataset from: {dataset_path}")
-        
-        if not os.path.exists(dataset_path):
-            print(f"Error: Dataset path not found: {dataset_path}")
+        # Verify the download
+        if not os.path.exists('data/trashnet/garbage_classification'):
+            print("Error: Dataset download failed or directory structure is incorrect")
             return False
             
-        # Move the dataset to our data directory
-        for item in os.listdir(dataset_path):
-            s = os.path.join(dataset_path, item)
-            d = os.path.join('data/trashnet', item)
-            print(f"Moving {item} to {d}")
-            if os.path.isdir(s):
-                shutil.copytree(s, d, dirs_exist_ok=True)
-            else:
-                shutil.copy2(s, d)
-        print("Dataset successfully moved to data/trashnet directory")
+        # Move files to correct locations
+        source_dir = 'data/trashnet/garbage_classification'
+        for category in os.listdir(source_dir):
+            category_path = os.path.join(source_dir, category)
+            if os.path.isdir(category_path):
+                dest_path = os.path.join('data/trashnet', category.lower())
+                print(f"Moving {category} to {dest_path}")
+                shutil.move(category_path, dest_path)
+                
+        # Clean up
+        if os.path.exists(source_dir):
+            shutil.rmtree(source_dir)
+            
+        print("Dataset successfully downloaded and organized")
         return True
             
     except Exception as e:
@@ -66,21 +72,86 @@ def prepare_dataset():
     """Prepare the TrashNet dataset for YOLOv8 training."""
     # Define class mapping
     class_mapping = {
-        'cardboard': 0,
-        'glass': 1,
-        'metal': 2,
-        'paper': 3,
-        'plastic': 4,
-        'trash': 5
+        'battery': 0,
+        'biological': 1,
+        'brown-glass': 2,
+        'cardboard': 3,
+        'clothes': 4,
+        'green-glass': 5,
+        'metal': 6,
+        'paper': 7,
+        'plastic': 8,
+        'shoes': 9,
+        'trash': 10,
+        'white-glass': 11
     }
     
+    # Create train/val/test splits
+    splits = {
+        'train': 0.7,
+        'val': 0.2,
+        'test': 0.1
+    }
+    
+    # Create directories for splits
+    for split in splits.keys():
+        os.makedirs(f'data/images/{split}', exist_ok=True)
+        os.makedirs(f'data/labels/{split}', exist_ok=True)
+    
     # Process each category
-    for category in class_mapping.keys():
+    for category, class_id in class_mapping.items():
         category_dir = f'data/trashnet/{category}'
         if not os.path.exists(category_dir):
             print(f"Category directory not found: {category_dir}")
             return False
+            
+        # Get all images in category
+        images = [f for f in os.listdir(category_dir) if f.endswith(('.jpg', '.jpeg', '.png'))]
+        if not images:
+            print(f"No images found in {category_dir}")
+            continue
+            
+        # Shuffle images
+        random.shuffle(images)
+        
+        # Split images
+        n_images = len(images)
+        n_train = int(n_images * splits['train'])
+        n_val = int(n_images * splits['val'])
+        
+        train_images = images[:n_train]
+        val_images = images[n_train:n_train + n_val]
+        test_images = images[n_train + n_val:]
+        
+        # Move images and create labels
+        for split, split_images in [('train', train_images), ('val', val_images), ('test', test_images)]:
+            for img in split_images:
+                # Copy image
+                src = os.path.join(category_dir, img)
+                dst = os.path.join(f'data/images/{split}', img)
+                shutil.copy2(src, dst)
+                
+                # Create YOLO format label (full image bounding box)
+                label_path = os.path.join(f'data/labels/{split}', img.rsplit('.', 1)[0] + '.txt')
+                with open(label_path, 'w') as f:
+                    # Format: class x_center y_center width height
+                    f.write(f"{class_id} 0.5 0.5 1.0 1.0\n")
     
+    # Create data.yaml file
+    workspace_dir = os.path.abspath(os.path.dirname(__file__))
+    yaml_content = f"""
+train: {os.path.join(workspace_dir, 'data/images/train')}
+val: {os.path.join(workspace_dir, 'data/images/val')}
+test: {os.path.join(workspace_dir, 'data/images/test')}
+
+nc: {len(class_mapping)}
+names: {list(class_mapping.keys())}
+    """
+    
+    with open('data.yaml', 'w') as f:
+        f.write(yaml_content)
+    
+    print("Dataset preparation completed successfully")
     return True
 
 def train_model():
