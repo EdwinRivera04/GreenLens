@@ -159,19 +159,70 @@ def train_model():
     # Initialize model
     model = YOLO('yolov8n.pt')  # Load pretrained YOLOv8n model
     
+    # Device selection logic
+    if torch.cuda.is_available():
+        device = 'cuda'
+        # Print GPU info
+        gpu_name = torch.cuda.get_device_name(0)
+        print(f"Using GPU: {gpu_name}")
+        print(f"CUDA Version: {torch.version.cuda}")
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        device = 'mps'
+        print("Using Apple Silicon GPU (MPS)")
+    else:
+        device = 'cpu'
+        print("Using CPU")
+    
+    # Optimize training parameters for RTX 4070 Ti
+    if device == 'cuda':
+        batch_size = 32  # RTX 4070 Ti has 12GB VRAM
+        num_workers = 8
+        mixed_precision = True
+    elif device == 'mps':
+        batch_size = 16
+        num_workers = 4
+        mixed_precision = True
+    else:
+        batch_size = 8
+        num_workers = 4
+        mixed_precision = False
+    
     # Training parameters
     train_args = {
         'data': 'data.yaml',
-        'epochs': 100,
+        'epochs': 50,
         'imgsz': 640,
-        'batch': 16,
-        'device': 'cuda' if torch.cuda.is_available() else 'cpu',
-        'workers': 8,
-        'patience': 50,
+        'batch': batch_size,
+        'device': device,
+        'workers': num_workers,
+        'patience': 25,
         'project': 'runs/train',
         'name': 'trash_sorter',
-        'exist_ok': True
+        'exist_ok': True,
+        'pretrained': True,
+        'optimizer': 'Adam',
+        'amp': mixed_precision,  # Automatic Mixed Precision
+        'lr0': 0.001,  # Initial learning rate
+        'lrf': 0.01,   # Final learning rate ratio
+        'momentum': 0.937,
+        'weight_decay': 0.0005,
+        'warmup_epochs': 3.0,
+        'warmup_momentum': 0.8,
+        'warmup_bias_lr': 0.1,
+        'box': 7.5,
+        'cls': 0.5,
+        'dfl': 1.5,
+        'plots': True,  # Plot training results
+        'save': True,   # Save checkpoints
+        'cache': True   # Cache images for faster training
     }
+    
+    print(f"\nTraining configuration:")
+    print(f"Batch size: {batch_size}")
+    print(f"Workers: {num_workers}")
+    print(f"Mixed precision: {mixed_precision}")
+    print(f"Image size: {train_args['imgsz']}")
+    print(f"Epochs: {train_args['epochs']}\n")
     
     # Start training
     results = model.train(**train_args)
