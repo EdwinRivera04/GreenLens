@@ -2,10 +2,14 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 import time
+import os
 
 class TrashSorter:
-    def __init__(self, model_path='models/best.pt'):
+    def __init__(self, model_path='runs/train/trash_sorter_v2/weights/best.pt'):
         """Initialize the trash sorter with a trained YOLOv8 model."""
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model not found at {model_path}. Please ensure the model file exists.")
+            
         self.model = YOLO(model_path)
         self.categories = ['cardboard', 'glass', 'metal', 'paper', 'plastic', 'trash']
         self.colors = {
@@ -16,6 +20,7 @@ class TrashSorter:
             'plastic': (255, 0, 255),    # Magenta
             'trash': (128, 128, 128)     # Gray
         }
+        print(f"Model loaded successfully from {model_path}")
 
     def process_frame(self, frame):
         """Process a single frame and return the annotated frame."""
@@ -47,38 +52,47 @@ class TrashSorter:
         return frame
 
 def main():
-    # Initialize the trash sorter
-    sorter = TrashSorter()
-    
-    # Initialize webcam
-    cap = cv2.VideoCapture(0)
-    
-    # Set frame dimensions
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    
-    print("Trash Sorter is running. Press 'q' to quit.")
-    
-    while True:
-        # Read frame
-        ret, frame = cap.read()
-        if not ret:
-            print("Failed to grab frame")
-            break
+    try:
+        # Initialize the trash sorter
+        sorter = TrashSorter()
+        
+        # Initialize webcam
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            raise RuntimeError("Failed to open webcam")
+        
+        # Set frame dimensions
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        print("Trash Sorter is running. Press 'q' to quit.")
+        
+        while True:
+            # Read frame
+            ret, frame = cap.read()
+            if not ret:
+                print("Failed to grab frame")
+                break
+                
+            # Process frame
+            processed_frame = sorter.process_frame(frame)
             
-        # Process frame
-        processed_frame = sorter.process_frame(frame)
+            # Display frame
+            cv2.imshow('Trash Sorter', processed_frame)
+            
+            # Break loop on 'q' press
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
         
-        # Display frame
-        cv2.imshow('Trash Sorter', processed_frame)
+        # Clean up
+        cap.release()
+        cv2.destroyAllWindows()
         
-        # Break loop on 'q' press
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-    
-    # Clean up
-    cap.release()
-    cv2.destroyAllWindows()
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        if 'cap' in locals():
+            cap.release()
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main() 
